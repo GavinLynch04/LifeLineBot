@@ -28,6 +28,20 @@ model = AutoModelForCausalLM.from_pretrained(
     device_map=device
 )
 
+def expand_query(user_query):
+    """Uses LLM to rephrase or expand the query to improve retrieval."""
+    prompt = f"""
+    You are an expert in survival situations. Rewrite the following user query to be clearer and optimized for retrieving survival knowledge from a database.
+
+    User query: "{user_query}"
+
+    Expanded query:
+    """
+    inputs = tokenizer(prompt, return_tensors="pt", padding=True, truncation=True).to(device)
+    output_ids = model.generate(inputs["input_ids"], max_length=100000)
+    return tokenizer.decode(output_ids[0], skip_special_tokens=True)
+
+
 def load_processed_pdfs():
     """Load the list of processed PDFs from a JSON file."""
     if os.path.exists(METADATA_FILE):
@@ -73,10 +87,13 @@ def process_pdf(pdf_path, processed_pdfs):
         save_processed_pdfs(processed_pdfs)
 
 def retrieve_relevant_text(query, top_k=3):
-    """Finds the most relevant survival information for a query."""
-    query_embedding = embedder.encode([query]).tolist()[0]
+    expanded_query = expand_query(query)  # Expand the query before embedding
+    if "</think>" in expanded_query:
+        expanded_query = expanded_query.split("</think>")[-1].strip()
+    query_embedding = embedder.encode([expanded_query]).tolist()[0]
     results = collection.query(query_embeddings=[query_embedding], n_results=top_k)
     return results['documents'][0] if results['documents'] else []
+
 
 chat_hist=""
 def generate_response(user_query):
