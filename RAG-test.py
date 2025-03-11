@@ -1,57 +1,46 @@
+import time
+
+from llama_cpp import Llama
 import json
 import os
 import pdfplumber
 import chromadb
 import torch
 from sentence_transformers import SentenceTransformer
-from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 
-os.environ["USE_TF"] = "0"  # Disable TensorFlow
+os.environ["USE_TF"] = "0"
 METADATA_FILE = "./Documents/processed_pdfs.json"
 
-# Load Sentence Transformer for embedding queries
+llm = Llama.from_pretrained(
+	repo_id="bartowski/Llama-3.2-3B-Instruct-GGUF",
+	filename="Llama-3.2-3B-Instruct-Q6_K_L.gguf",
+    verbose=False,
+    n_ctx=40096
+)
+
+
 embedder = SentenceTransformer("all-MiniLM-L6-v2")
 
-# Load ChromaDB for storing and retrieving documents
 chroma_client = chromadb.PersistentClient(path="./rag_database2")
 collection = chroma_client.get_or_create_collection(name="survival_knowledge")
 
 device = "mps" if torch.backends.mps.is_available() else "cpu"
-torch_dtype = torch.float16  # MPS does not work well with float16
-
 print(f"Using device: {device}")
 
-model_name = "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B"
-tokenizer = AutoTokenizer.from_pretrained(model_name)
-
-model = AutoModelForCausalLM.from_pretrained(
-    model_name,
-    torch_dtype=torch_dtype,
-    device_map=device,
-).eval()
-
-model = torch.compile(model)
-
-
-
-if tokenizer.pad_token is None:
-    tokenizer.pad_token = tokenizer.eos_token
-
 def expand_query(user_query):
-    """Uses LLM to rephrase or expand the query to improve retrieval."""
+    """Uses the quantized LLM to rephrase or expand the query for improved retrieval."""
     prompt = f"""
-    Rewrite the following user query to be clearer and optimized for retrieving survival knowledge from a database quickly.
-    Only print the query.
-    User query: "{user_query}"
+Rewrite the following user question to be clearer and optimized for retrieving survival knowledge quickly. This is NOT a SQL query, but a text based query.
+Only print the query, nothing else.
+User query: "{user_query}"
 
-    Expanded query:
-    """
-    inputs = tokenizer(prompt, return_tensors="pt", padding=True, truncation=True).to(device)
-    inputs["input_ids"] = inputs["input_ids"].to(device)  # device should be 'mps' or 'cpu', whichever you're using for the model
-    print("Generating first output")
-    output_ids = model.generate(inputs["input_ids"], max_length=550)
-    return tokenizer.decode(output_ids[0], skip_special_tokens=True)
-
+Expanded query:
+"""
+    # Generate using the llama_cpp model
+    result = llm(prompt, max_tokens=10000)
+    # Assuming the result is a dictionary with key 'text'
+    expanded = result.get("choices", "")[0].get("text", "").strip()
+    return expanded
 
 def load_processed_pdfs():
     """Load the list of processed PDFs from a JSON file."""
@@ -65,33 +54,30 @@ def save_processed_pdfs(processed_pdfs):
     with open(METADATA_FILE, "w") as f:
         json.dump(processed_pdfs, f, indent=4)
 
-
-def process_text(text, source_name): #ADD OVERLAP TO CHUNKS
+def process_text(text, source_name):  # ADD OVERLAP TO CHUNKS if needed
     """Splits text into chunks, embeds them, and stores them in ChromaDB without duplicates."""
     chunks = [text[i:i + 500] for i in range(0, len(text), 500)]
     embeddings = embedder.encode(chunks).tolist()
 
     # Get existing document IDs in ChromaDB
-    existing_ids = set(collection.get(ids=[f"{source_name}-{i}" for i in range(len(chunks))])["ids"])
+    existing_ids = set(
+        collection.get(ids=[f"{source_name}-{i}" for i in range(len(chunks))]).get("ids", [])
+    )
 
     for i, chunk in enumerate(chunks):
         chunk_id = f"{source_name}-{i}"
-
         if chunk_id in existing_ids:
             continue
-
         collection.add(
             ids=[chunk_id],
             documents=[chunk],
             embeddings=[embeddings[i]]
         )
 
-
 def process_pdf(pdf_path, processed_pdfs):
     """Extracts text from a PDF and stores it in ChromaDB."""
     with pdfplumber.open(pdf_path) as pdf:
         text = "\n".join([page.extract_text() for page in pdf.pages if page.extract_text()])
-
     if text.strip():
         process_text(text, os.path.basename(pdf_path))
         processed_pdfs[os.path.basename(pdf_path)] = True
@@ -99,58 +85,45 @@ def process_pdf(pdf_path, processed_pdfs):
 
 def retrieve_relevant_text(query, top_k=3):
     expanded_query = expand_query(query)
+    # If any control tags exist, clean them up.
     if "</think>" in expanded_query:
         expanded_query = expanded_query.split("</think>")[-1].strip()
-    print(expanded_query)
     query_embedding = embedder.encode([expanded_query]).tolist()[0]
     results = collection.query(query_embeddings=[query_embedding], n_results=top_k)
-    return results['documents'][0] if results['documents'] else []
+    # Return the first set of retrieved documents if available
+    return results['documents'][0] if results.get('documents') else []
 
+chat_hist = ""
 
-chat_hist=""
 def generate_response(user_query):
-    """Retrieves relevant info and formats a response with Mistral 8x7B."""
+    """Retrieves relevant info and formats a response using the quantized LLM via llama_cpp."""
     retrieved_texts = retrieve_relevant_text(user_query)
     context = " ".join(retrieved_texts)
-    print(f"RAG Generated Info: {context}")
 
-    # Create a user-friendly prompt
+    # Create a prompt for the LLM with context, chat history, and user query
     prompt = f"""
-        You are a survival expert. Answer the user's question in a concise, and structured manner.
-        Assume the user is in a survival situation unless otherwise told so.
-        If you need more info from the user to make a good recommendation, ask.
-        You do not need to use all the info, only some of it will be relevant, choose what to use.
-        Make sure your response is complete and directed at the user, with clear steps to follow.
-        Make your response fairly quick, as the user might be in a dire situation.
-        Here is the info:
+You are a survival expert. Answer the user's question in a concise, structured manner.
+Assume the user is in a survival situation unless otherwise stated.
+If you need more information to provide a good recommendation, ask for clarification.
+Use only the relevant information from the provided context.
+Make sure your response is complete, directed at the user, and includes clear steps to follow.
+Respond quickly, as the user might be in a dire situation.
 
-        Survival Information:
-        {context}
-        
-        Also take into account any previous questions (if any) and answers that have occurred to formulate your response.
-        Chat history:
-        {chat_hist}
+Survival Information:
+{context}
 
-        User question: {user_query}
+Chat history:
+{chat_hist}
 
-        Answer:
-        """
+User question: {user_query}
 
-    inputs = tokenizer(prompt, return_tensors="pt", padding=True, truncation=True).to(device)
-
-    output_ids = model.generate(
-        inputs["input_ids"],
-        attention_mask=inputs["attention_mask"],
-        max_length=100000,
-        pad_token_id=tokenizer.pad_token_id
-    )
-    response = tokenizer.decode(output_ids[0], skip_special_tokens=True)
-
+Answer:
+"""
+    result = llm(prompt, max_tokens=100000)
+    response = result.get("choices", "")[0].get("text", "").strip()
     if "</think>" in response:
         response = response.split("</think>")[-1].strip()
-
     return response
-
 
 if __name__ == "__main__":
     processed_pdfs = load_processed_pdfs()
@@ -167,7 +140,9 @@ if __name__ == "__main__":
         user_input = input("\nAsk a survival question (or type 'exit'): ")
         if user_input.lower() == "exit":
             break
-
+        start = time.time()
         response = generate_response(user_input)
         chat_hist = response
         print("\nAI Response:", response)
+        end = time.time()
+        print("\nTotal time:", end - start)
