@@ -1,28 +1,27 @@
-import json
-import os
-import pdfplumber
-import chromadb
+import time
+import google.generativeai as genai
 import torch
-from sentence_transformers import SentenceTransformer
-from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
+from transformers import AutoTokenizer, AutoModelForCausalLM
 
-os.environ["USE_TF"] = "0"  # Disable TensorFlow
-METADATA_FILE = "./Documents/processed_pdfs.json"
+import KnowledgeBase
+from KnowledgeBase import *
+from dotenv import load_dotenv
+load_dotenv()
 
-# Load Sentence Transformer for embedding queries
-embedder = SentenceTransformer("all-MiniLM-L6-v2")
+base = 0
+genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
-# Load ChromaDB for storing and retrieving documents
-chroma_client = chromadb.PersistentClient(path="./rag_database2")
-collection = chroma_client.get_or_create_collection(name="survival_knowledge")
+os.environ["USE_TF"] = "0"
 
 device = "mps" if torch.backends.mps.is_available() else "cpu"
-torch_dtype = torch.float16  # MPS does not work well with float16
+torch_dtype = torch.float16
 
 print(f"Using device: {device}")
 
 model_name = "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B"
 tokenizer = AutoTokenizer.from_pretrained(model_name)
+if tokenizer.pad_token is None:
+    tokenizer.pad_token = tokenizer.eos_token
 
 model = AutoModelForCausalLM.from_pretrained(
     model_name,
@@ -30,12 +29,18 @@ model = AutoModelForCausalLM.from_pretrained(
     device_map=device,
 ).eval()
 
+# Compile Model
 model = torch.compile(model)
 
 
-
-if tokenizer.pad_token is None:
-    tokenizer.pad_token = tokenizer.eos_token
+def query_gemini(prompt, model="gemini-2.0-flash"):
+    """Query Google Gemini API and return response."""
+    try:
+        response = genai.GenerativeModel(model).generate_content(prompt)
+        return response.text
+    except Exception as e:
+        print(f"⚠️ Gemini API failed: {e}. Falling back to local model.")
+        return None
 
 def expand_query(user_query):
     """Uses LLM to rephrase or expand the query to improve retrieval."""
@@ -43,68 +48,30 @@ def expand_query(user_query):
     Rewrite the following user query to be clearer and optimized for retrieving survival knowledge from a database quickly.
     Only print the query.
     User query: "{user_query}"
-
-    Expanded query:
     """
+    expanded_query = query_gemini(prompt)
+    if expanded_query:
+        base = KnowledgeBase.update_user_data(user_query)
+        return expanded_query
+
+    print("🔄 Falling back to local expansion model...")
+
     inputs = tokenizer(prompt, return_tensors="pt", padding=True, truncation=True).to(device)
-    inputs["input_ids"] = inputs["input_ids"].to(device)  # device should be 'mps' or 'cpu', whichever you're using for the model
+    inputs["input_ids"] = inputs["input_ids"].to(device)
     print("Generating first output")
-    output_ids = model.generate(inputs["input_ids"], max_length=550)
+    start = time.time()
+    output_ids = model.generate(
+        input_ids=inputs["input_ids"],
+        max_length=200,
+        attention_mask=inputs["attention_mask"],
+        pad_token_id=tokenizer.eos_token_id,
+        temperature=0.7,  # Less randomness
+        top_p=0.9,  # Less likely to generate long rambling responses
+        do_sample=True,
+    )
+    end = time.time()
+    print("Time taken to generate output:", end - start)
     return tokenizer.decode(output_ids[0], skip_special_tokens=True)
-
-
-def load_processed_pdfs():
-    """Load the list of processed PDFs from a JSON file."""
-    if os.path.exists(METADATA_FILE):
-        with open(METADATA_FILE, "r") as f:
-            return json.load(f)
-    return {}
-
-def save_processed_pdfs(processed_pdfs):
-    """Save the list of processed PDFs to a JSON file."""
-    with open(METADATA_FILE, "w") as f:
-        json.dump(processed_pdfs, f, indent=4)
-
-
-def process_text(text, source_name): #ADD OVERLAP TO CHUNKS
-    """Splits text into chunks, embeds them, and stores them in ChromaDB without duplicates."""
-    chunks = [text[i:i + 500] for i in range(0, len(text), 500)]
-    embeddings = embedder.encode(chunks).tolist()
-
-    # Get existing document IDs in ChromaDB
-    existing_ids = set(collection.get(ids=[f"{source_name}-{i}" for i in range(len(chunks))])["ids"])
-
-    for i, chunk in enumerate(chunks):
-        chunk_id = f"{source_name}-{i}"
-
-        if chunk_id in existing_ids:
-            continue
-
-        collection.add(
-            ids=[chunk_id],
-            documents=[chunk],
-            embeddings=[embeddings[i]]
-        )
-
-
-def process_pdf(pdf_path, processed_pdfs):
-    """Extracts text from a PDF and stores it in ChromaDB."""
-    with pdfplumber.open(pdf_path) as pdf:
-        text = "\n".join([page.extract_text() for page in pdf.pages if page.extract_text()])
-
-    if text.strip():
-        process_text(text, os.path.basename(pdf_path))
-        processed_pdfs[os.path.basename(pdf_path)] = True
-        save_processed_pdfs(processed_pdfs)
-
-def retrieve_relevant_text(query, top_k=3):
-    expanded_query = expand_query(query)
-    if "</think>" in expanded_query:
-        expanded_query = expanded_query.split("</think>")[-1].strip()
-    print(expanded_query)
-    query_embedding = embedder.encode([expanded_query]).tolist()[0]
-    results = collection.query(query_embeddings=[query_embedding], n_results=top_k)
-    return results['documents'][0] if results['documents'] else []
 
 
 chat_hist=""
@@ -130,18 +97,29 @@ def generate_response(user_query):
         Also take into account any previous questions (if any) and answers that have occurred to formulate your response.
         Chat history:
         {chat_hist}
+        
+        User Data:
+        {base.data}
 
         User question: {user_query}
 
         Answer:
         """
 
+    gemini_response = query_gemini(prompt)
+    if gemini_response:
+        return gemini_response
+
+    print("🔄 Falling back to local model...")
+
     inputs = tokenizer(prompt, return_tensors="pt", padding=True, truncation=True).to(device)
+    input_ids = inputs["input_ids"]
+    attention_mask = inputs["attention_mask"]
 
     output_ids = model.generate(
-        inputs["input_ids"],
-        attention_mask=inputs["attention_mask"],
-        max_length=100000,
+        input_ids=input_ids,
+        attention_mask=attention_mask,
+        max_length=10000,
         pad_token_id=tokenizer.pad_token_id
     )
     response = tokenizer.decode(output_ids[0], skip_special_tokens=True)
@@ -154,6 +132,7 @@ def generate_response(user_query):
 
 if __name__ == "__main__":
     processed_pdfs = load_processed_pdfs()
+    #Walk through pdfs and check if already in database
     for root, _, files in os.walk("./Documents"):
         for file in files:
             if file.endswith(".pdf") and file not in processed_pdfs:

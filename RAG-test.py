@@ -1,5 +1,4 @@
 import time
-
 from llama_cpp import Llama
 import json
 import os
@@ -7,15 +6,20 @@ import pdfplumber
 import chromadb
 import torch
 from sentence_transformers import SentenceTransformer
+from tensorflow.python.eager.context import num_gpus
 
 os.environ["USE_TF"] = "0"
 METADATA_FILE = "./Documents/processed_pdfs.json"
+n_threads = os.cpu_count() // 2
 
 llm = Llama.from_pretrained(
 	repo_id="bartowski/Llama-3.2-3B-Instruct-GGUF",
-	filename="Llama-3.2-3B-Instruct-Q6_K_L.gguf",
+	filename="Llama-3.2-3B-Instruct-Q4_0.gguf",
     verbose=False,
-    n_ctx=40096
+    n_ctx=40096,
+    n_gpu_layers=10,
+    n_threads=n_threads,
+    batch_size=64,
 )
 
 
@@ -107,7 +111,7 @@ Assume the user is in a survival situation unless otherwise stated.
 If you need more information to provide a good recommendation, ask for clarification.
 Use only the relevant information from the provided context.
 Make sure your response is complete, directed at the user, and includes clear steps to follow.
-Respond quickly, as the user might be in a dire situation.
+Respond in a compact, short manner, as the user might be in a dire situation.
 
 Survival Information:
 {context}
