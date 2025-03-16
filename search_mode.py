@@ -4,16 +4,15 @@ import nltk
 import pdfplumber
 from sentence_transformers import SentenceTransformer
 import chromadb
+from config import SEARCH_METADATA_FILE, SEARCH_DB_PATH, SEARCH_COLLECTION_NAME
 
 nltk.download('punkt')
 
 embedder = SentenceTransformer("all-MiniLM-L6-v2")
 
-METADATA_FILE = "./Documents/processed_pdfs_search_mode.json"
-
 # Load ChromaDB for storing and retrieving documents
-chroma_client = chromadb.PersistentClient(path="./rag_database_search_mode")
-collection = chroma_client.get_or_create_collection(name="survival_knowledge")
+chroma_client = chromadb.PersistentClient(path=SEARCH_DB_PATH)
+collection = chroma_client.get_or_create_collection(name=SEARCH_COLLECTION_NAME)
 
 
 def split_into_chunks(text, max_tokens=750):
@@ -59,15 +58,15 @@ def process_text(text, source_name):
 
 def load_processed_pdfs():
     """Load the list of processed PDFs from a JSON file."""
-    if os.path.exists(METADATA_FILE):
-        with open(METADATA_FILE, "r") as f:
+    if os.path.exists(SEARCH_METADATA_FILE):
+        with open(SEARCH_METADATA_FILE, "r") as f:
             return json.load(f)
     return {}
 
 
 def save_processed_pdfs(processed_pdfs):
     """Save the list of processed PDFs to a JSON file."""
-    with open(METADATA_FILE, "w") as f:
+    with open(SEARCH_METADATA_FILE, "w") as f:
         json.dump(processed_pdfs, f, indent=4)
 
 
