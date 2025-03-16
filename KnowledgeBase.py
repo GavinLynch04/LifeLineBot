@@ -3,7 +3,7 @@ import os
 import chromadb
 import pdfplumber
 from sentence_transformers import SentenceTransformer
-from SurvivalBot import *
+from SurvivalBot import expand_query, query_gemini
 
 METADATA_FILE = "./Documents/processed_pdfs.json"
 
@@ -104,5 +104,10 @@ def retrieve_relevant_text(query, top_k=3):
     if "</think>" in expanded_query:
         expanded_query = expanded_query.split("</think>")[-1].strip()
     query_embedding = embedder.encode([expanded_query]).tolist()[0]
+    results = collection.query(query_embeddings=[query_embedding], n_results=top_k)
+    return results['documents'][0] if results['documents'] else []
+
+def ai_search(query, top_k=3):
+    query_embedding = embedder.encode([query]).tolist()[0]
     results = collection.query(query_embeddings=[query_embedding], n_results=top_k)
     return results['documents'][0] if results['documents'] else []
