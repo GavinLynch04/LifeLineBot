@@ -4,7 +4,7 @@ import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import os
 import KnowledgeBase
-from KnowledgeBase import *
+import search_mode
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -77,7 +77,7 @@ def expand_query(user_query):
 chat_hist=""
 def generate_response(user_query):
     """Retrieves relevant info and formats a response with Mistral 8x7B."""
-    retrieved_texts = retrieve_relevant_text(user_query)
+    retrieved_texts = KnowledgeBase.retrieve_relevant_text(user_query)
     context = " ".join(retrieved_texts)
     print(f"RAG Generated Info: {context}")
 
@@ -131,14 +131,14 @@ def generate_response(user_query):
 
 
 if __name__ == "__main__":
-    processed_pdfs = load_processed_pdfs()
+    processed_pdfs = KnowledgeBase.load_processed_pdfs()
     #Walk through pdfs and check if already in database
     for root, _, files in os.walk("./Documents"):
         for file in files:
             if file.endswith(".pdf") and file not in processed_pdfs:
                 pdf_path = os.path.join(root, file)
                 print(f"Processing new PDF: {pdf_path}")
-                process_pdf(pdf_path, processed_pdfs)
+                KnowledgeBase.process_pdf(pdf_path, processed_pdfs)
             else:
                 print(f"Skipping already processed PDF: {file}")
 
@@ -162,5 +162,5 @@ if __name__ == "__main__":
             chat_hist = response
             print("\nAI Response:", response)
         elif output_mode == "search":
-            search_result = ai_search(user_input)
+            search_result = search_mode.ai_search(user_input)
             print("\nSearch Result:", search_result)
