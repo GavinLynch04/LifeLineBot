@@ -5,14 +5,14 @@ import pdfplumber
 from sentence_transformers import SentenceTransformer
 from SurvivalBot import expand_query, query_gemini
 
-METADATA_FILE = "./Documents/processed_pdfs.json"
+CHAT_METADATA_FILE = "./Documents/processed_pdfs_chat_mode.json"
 
 # Load Sentence Transformer for embedding queries
 embedder = SentenceTransformer("all-MiniLM-L6-v2")
 
 # Load ChromaDB for storing and retrieving documents
-chroma_client = chromadb.PersistentClient(path="./rag_database2")
-collection = chroma_client.get_or_create_collection(name="survival_knowledge")
+chroma_client = chromadb.PersistentClient(path="./rag_database_chat_mode")
+collection = chroma_client.get_or_create_collection(name="survival_knowledge_chat_mode")
 
 class UserKnowledgeBase:
     def __init__(self):
@@ -32,14 +32,14 @@ userData = UserKnowledgeBase()
 
 def load_processed_pdfs():
     """Load the list of processed PDFs from a JSON file."""
-    if os.path.exists(METADATA_FILE):
-        with open(METADATA_FILE, "r") as f:
+    if os.path.exists(CHAT_METADATA_FILE):
+        with open(CHAT_METADATA_FILE, "r") as f:
             return json.load(f)
     return {}
 
 def save_processed_pdfs(processed_pdfs):
     """Save the list of processed PDFs to a JSON file."""
-    with open(METADATA_FILE, "w") as f:
+    with open(CHAT_METADATA_FILE, "w") as f:
         json.dump(processed_pdfs, f, indent=4)
 
 
