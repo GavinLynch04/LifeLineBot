@@ -1,11 +1,27 @@
+import importlib
 import time
 import google.generativeai as genai
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import os
 import KnowledgeBase
-import search_mode
+from search_mode import ai_search
 from dotenv import load_dotenv
+import chromadb
+from config import (
+    AVAILABLE_MODES,
+    CHAT_METADATA_FILE, SEARCH_METADATA_FILE,  # Metadata file paths
+    CHAT_DB_PATH, SEARCH_DB_PATH,  # ChromaDB paths
+    CHAT_COLLECTION_NAME, SEARCH_COLLECTION_NAME  # ChromaDB collection names
+)
+
+# Initialize ChromaDB clients and collections
+chat_chroma_client = chromadb.PersistentClient(path=CHAT_DB_PATH)
+search_chroma_client = chromadb.PersistentClient(path=SEARCH_DB_PATH)
+
+chat_collection = chat_chroma_client.get_or_create_collection(name=CHAT_COLLECTION_NAME)
+search_collection = search_chroma_client.get_or_create_collection(name=SEARCH_COLLECTION_NAME)
+
 load_dotenv()
 
 base = 0
@@ -42,6 +58,7 @@ def query_gemini(prompt, model="gemini-2.0-flash"):
         print(f"⚠️ Gemini API failed: {e}. Falling back to local model.")
         return None
 
+
 def expand_query(user_query):
     """Uses LLM to rephrase or expand the query to improve retrieval."""
     prompt = f"""
@@ -74,12 +91,14 @@ def expand_query(user_query):
     return tokenizer.decode(output_ids[0], skip_special_tokens=True)
 
 
-chat_hist=""
+chat_hist = ""
+
+
 def generate_response(user_query):
     """Retrieves relevant info and formats a response with Mistral 8x7B."""
     retrieved_texts = KnowledgeBase.retrieve_relevant_text(user_query)
     context = " ".join(retrieved_texts)
-    print(f"RAG Generated Info: {context}")
+    #print(f"RAG Generated Info: {context}")
 
     # Create a user-friendly prompt
     prompt = f"""
@@ -97,9 +116,6 @@ def generate_response(user_query):
         Also take into account any previous questions (if any) and answers that have occurred to formulate your response.
         Chat history:
         {chat_hist}
-        
-        User Data:
-        {base.data}
 
         User question: {user_query}
 
@@ -130,20 +146,36 @@ def generate_response(user_query):
     return response
 
 
+def load_module_functions(mode):
+    """Dynamically load functions from the correct mode-based module."""
+    if mode not in AVAILABLE_MODES:
+        raise ValueError(f"Invalid mode: {mode}")
+
+    module_name = AVAILABLE_MODES[mode]
+    module = importlib.import_module(module_name)  # Dynamically import module
+
+    return module.load_processed_pdfs, module.process_pdf  # Return functions
+
+
 if __name__ == "__main__":
-    processed_pdfs = KnowledgeBase.load_processed_pdfs()
-    #Walk through pdfs and check if already in database
-    for root, _, files in os.walk("./Documents"):
-        for file in files:
-            if file.endswith(".pdf") and file not in processed_pdfs:
-                pdf_path = os.path.join(root, file)
-                print(f"Processing new PDF: {pdf_path}")
-                KnowledgeBase.process_pdf(pdf_path, processed_pdfs)
-            else:
-                print(f"Skipping already processed PDF: {file}")
+    # Process PDFs for each mode
+    for mode in AVAILABLE_MODES.keys():
+        load_processed_pdfs, process_pdf = load_module_functions(mode)  # Get correct functions
+
+        processed_pdfs = load_processed_pdfs()  # Call the correct function dynamically
+        for root, _, files in os.walk("./Documents"):
+            for file in files:
+                if file.endswith(".pdf") and file not in processed_pdfs:
+                    pdf_path = os.path.join(root, file)
+                    print(f"[{mode.upper()}] Processing new PDF: {pdf_path}")
+                    process_pdf(pdf_path, processed_pdfs)  # Call correct function
+                else:
+                    # print(f"[{mode.upper()}] Skipping already processed PDF: {file}")
+                    pass
+
+    output_mode = "chat"
 
     while True:
-        output_mode = "chat"
         user_input = input(f"\nAsk a survival question ({output_mode} mode, type 'exit', 'search', or 'chat'): ")
 
         if user_input.lower() == "exit":
@@ -162,5 +194,6 @@ if __name__ == "__main__":
             chat_hist = response
             print("\nAI Response:", response)
         elif output_mode == "search":
-            search_result = search_mode.ai_search(user_input)
-            print("\nSearch Result:", search_result)
+            search_result = ai_search(user_input)
+            for result in search_result:
+                print("\nSearch Result:", result)
