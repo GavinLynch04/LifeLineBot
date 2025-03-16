@@ -9,7 +9,7 @@ from sentence_transformers import SentenceTransformer
 from tensorflow.python.eager.context import num_gpus
 
 os.environ["USE_TF"] = "0"
-METADATA_FILE = "./Documents/processed_pdfs.json"
+METADATA_FILE = "../Documents/processed_pdfs.json"
 n_threads = os.cpu_count() // 2
 
 llm = Llama.from_pretrained(
@@ -25,7 +25,7 @@ llm = Llama.from_pretrained(
 
 embedder = SentenceTransformer("all-MiniLM-L6-v2")
 
-chroma_client = chromadb.PersistentClient(path="./rag_database2")
+chroma_client = chromadb.PersistentClient(path="../rag_database2")
 collection = chroma_client.get_or_create_collection(name="survival_knowledge")
 
 device = "mps" if torch.backends.mps.is_available() else "cpu"
@@ -131,7 +131,7 @@ Answer:
 
 if __name__ == "__main__":
     processed_pdfs = load_processed_pdfs()
-    for root, _, files in os.walk("./Documents"):
+    for root, _, files in os.walk("../Documents"):
         for file in files:
             if file.endswith(".pdf") and file not in processed_pdfs:
                 pdf_path = os.path.join(root, file)
