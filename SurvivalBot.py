@@ -2,7 +2,7 @@ import time
 import google.generativeai as genai
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
-
+import os
 import KnowledgeBase
 from KnowledgeBase import *
 from dotenv import load_dotenv
@@ -13,7 +13,7 @@ genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
 os.environ["USE_TF"] = "0"
 
-device = "mps" if torch.backends.mps.is_available() else "cpu"
+device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
 torch_dtype = torch.float16
 
 print(f"Using device: {device}")
@@ -143,10 +143,24 @@ if __name__ == "__main__":
                 print(f"Skipping already processed PDF: {file}")
 
     while True:
-        user_input = input("\nAsk a survival question (or type 'exit'): ")
+        output_mode = "chat"
+        user_input = input(f"\nAsk a survival question ({output_mode} mode, type 'exit', 'search', or 'chat'): ")
+
         if user_input.lower() == "exit":
             break
+        elif user_input.lower() == "search":
+            output_mode = "search"
+            print("Switched to search mode.")
+            continue
+        elif user_input.lower() == "chat":
+            output_mode = "chat"
+            print("Switched to chat mode.")
+            continue
 
-        response = generate_response(user_input)
-        chat_hist = response
-        print("\nAI Response:", response)
+        if output_mode == "chat":
+            response = generate_response(user_input)
+            chat_hist = response
+            print("\nAI Response:", response)
+        elif output_mode == "search":
+            search_result = ai_search(user_input)
+            print("\nSearch Result:", search_result)
