@@ -106,8 +106,3 @@ def retrieve_relevant_text(query, top_k=3):
     query_embedding = embedder.encode([expanded_query]).tolist()[0]
     results = collection.query(query_embeddings=[query_embedding], n_results=top_k)
     return results['documents'][0] if results['documents'] else []
-
-def ai_search(query, top_k=3):
-    query_embedding = embedder.encode([query]).tolist()[0]
-    results = collection.query(query_embeddings=[query_embedding], n_results=top_k)
-    return results['documents'][0] if results['documents'] else []
