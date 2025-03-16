@@ -5,13 +5,13 @@ import chromadb
 from sentence_transformers import SentenceTransformer
 from concurrent.futures import ThreadPoolExecutor
 
-METADATA_FILE = "./Documents/processed_pdfs.json"
+METADATA_FILE = "../Documents/processed_pdfs.json"
 
 # Load Sentence Transformer for embedding queries
 embedder = SentenceTransformer("all-MiniLM-L6-v2")
 
 # Load ChromaDB for storing and retrieving documents
-chroma_client = chromadb.PersistentClient(path="./rag_database2")
+chroma_client = chromadb.PersistentClient(path="../rag_database2")
 collection = chroma_client.get_or_create_collection(name="survival_knowledge")
 
 
@@ -63,7 +63,7 @@ if __name__ == "__main__":
     processed_pdfs = KnowledgeBase.load_processed_pdfs()
     pdf_paths = [
         os.path.join(root, file)
-        for root, _, files in os.walk("./Documents")
+        for root, _, files in os.walk("../Documents")
         for file in files if file.endswith(".pdf") and file not in processed_pdfs
     ]
 
