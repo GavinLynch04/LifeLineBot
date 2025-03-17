@@ -1,7 +1,7 @@
 # LifeLineBot
 
 ## Description
-A brief description of your project and its purpose.
+In search and rescue scenarios, victims often lack the knowledge to manage their situation effectively, making external assistance crucial. A lightweight chatbot could provide essential support in such cases, offering guidance in various survival situations. Unlike large language models (LLMs) like ChatGPT, which require internet access and significant storage, this chatbot would be designed to function offline with generalized knowledge to assist individuals in diverse scenarios. Its compact nature ensures it is accessible even without internet connectivity, making it a valuable tool for emergency situations.
 
 ## Installation
 Steps to install and set up the project.
