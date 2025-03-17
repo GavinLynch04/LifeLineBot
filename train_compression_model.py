@@ -95,7 +95,7 @@ trainer = Trainer(
 trainer.train()
 
 # Change this to a drive path that can store the trained model
-new_drive_path = "modelsMSDataWindows"
+new_drive_path = "sentence_compression_nt"
 os.makedirs(new_drive_path, exist_ok=True)
 
 # Saving model and tokenizer
