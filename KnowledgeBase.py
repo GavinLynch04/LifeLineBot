@@ -1,5 +1,7 @@
 import json
 import os
+import socket
+
 import chromadb
 import pdfplumber
 from sentence_transformers import SentenceTransformer
@@ -85,9 +87,12 @@ def update_user_data(message):
         "User Message:\n"
         f"{message}"
     )
+    if (lambda: (lambda s: s.close() or True if s.connect_ex(("8.8.8.8", 53)) == 0 else False)(socket.socket()) or False)():
+        response = query_gemini(prompt)
+        previous_data = userData.data
+    else:
+        return
 
-    response = query_gemini(prompt)
-    previous_data = userData.data
 
     try:
         userData.data = json.loads(response)

@@ -1,10 +1,11 @@
 import importlib
+import socket
 import time
 import google.generativeai as genai
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import os
-import KnowledgeBase
+from KnowledgeBase import *
 from search_mode import ai_search, compress
 from dotenv import load_dotenv
 import chromadb
@@ -64,25 +65,14 @@ def expand_query(user_query):
     Only print the query.
     User query: "{user_query}"
     """
-    expanded_query = query_gemini(prompt)
-    if expanded_query:
-        base = KnowledgeBase.update_user_data(user_query)
-        return expanded_query
 
-    print("🔄 Falling back to local expansion model...")
-
-    inputs = tokenizer(prompt, return_tensors="pt", padding=True, truncation=True).to(device)
-    inputs["input_ids"] = inputs["input_ids"].to(device)
-    output_ids = model.generate(
-        input_ids=inputs["input_ids"],
-        max_length=200,
-        attention_mask=inputs["attention_mask"],
-        pad_token_id=tokenizer.eos_token_id,
-        temperature=0.7,  # Less randomness
-        top_p=0.9,  # Less likely to generate long rambling responses
-        do_sample=True,
-    )
-    return tokenizer.decode(output_ids[0], skip_special_tokens=True)
+    if (lambda: (lambda s: s.close() or True if s.connect_ex(("8.8.8.8", 53)) == 0 else False)(socket.socket()) or False)():
+        expanded_query = query_gemini(prompt)
+        if expanded_query:
+            base = update_user_data(user_query)
+            return expanded_query
+    else:
+        return user_query
 
 
 chat_hist = ""
@@ -90,9 +80,8 @@ chat_hist = ""
 
 def generate_response(user_query):
     """Retrieves relevant info and formats a response with Mistral 8x7B."""
-    retrieved_texts = KnowledgeBase.retrieve_relevant_text(user_query)
+    retrieved_texts = retrieve_relevant_text(user_query)
     context = " ".join(retrieved_texts)
-    #print(f"RAG Generated Info: {context}")
 
     # Create a user-friendly prompt
     prompt = f"""
@@ -107,6 +96,9 @@ def generate_response(user_query):
         Survival Information:
         {context}
         
+        User information (if avaliable):
+        {base}
+        
         Also take into account any previous questions (if any) and answers that have occurred to formulate your response.
         Chat history:
         {chat_hist}
@@ -115,10 +107,10 @@ def generate_response(user_query):
 
         Answer:
         """
-
-    gemini_response = query_gemini(prompt)
-    if gemini_response:
-        return gemini_response
+    if (lambda: (lambda s: s.close() or True if s.connect_ex(("8.8.8.8", 53)) == 0 else False)(socket.socket()) or False)():
+        gemini_response = query_gemini(prompt)
+        if gemini_response:
+            return gemini_response
 
     print("🔄 Falling back to local model... (this may take a while).")
 
@@ -129,7 +121,7 @@ def generate_response(user_query):
     output_ids = model.generate(
         input_ids=input_ids,
         attention_mask=attention_mask,
-        max_length=10000,
+        max_new_tokens=5000,
         pad_token_id=tokenizer.pad_token_id
     )
     response = tokenizer.decode(output_ids[0], skip_special_tokens=True)
