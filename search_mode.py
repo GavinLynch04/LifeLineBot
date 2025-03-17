@@ -5,8 +5,6 @@ import pdfplumber
 from sentence_transformers import SentenceTransformer
 import chromadb
 from config import SEARCH_METADATA_FILE, SEARCH_DB_PATH, SEARCH_COLLECTION_NAME
-import matplotlib.pyplot as plt
-import seaborn as sns
 
 nltk.download('punkt')
 
