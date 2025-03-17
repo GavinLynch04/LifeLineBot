@@ -5,7 +5,7 @@ import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import os
 import KnowledgeBase
-from search_mode import ai_search
+from search_mode import ai_search, compress
 from dotenv import load_dotenv
 import chromadb
 from config import (
@@ -173,7 +173,8 @@ if __name__ == "__main__":
                     # print(f"[{mode.upper()}] Skipping already processed PDF: {file}")
                     pass
 
-    output_mode = "chat"
+    output_mode = "search"
+    search_result = None
 
     while True:
         user_input = input(f"\nAsk a survival question ({output_mode} mode, type 'exit', 'search', or 'chat'): ")
@@ -188,6 +189,9 @@ if __name__ == "__main__":
             output_mode = "chat"
             print("Switched to chat mode.")
             continue
+        elif user_input.lower() == "summarize" and output_mode == "search" and search_result is not None:
+            search_result = compress(search_result)
+            print(f"Summarized Text\n\n: {search_result}")
 
         if output_mode == "chat":
             response = generate_response(user_input)
@@ -195,5 +199,4 @@ if __name__ == "__main__":
             print("\nAI Response:", response)
         elif output_mode == "search":
             search_result = ai_search(user_input)
-            for result in search_result:
-                print("\nSearch Result:", result)
+            print("\nSearch Result (type \"summarize\" for a shortened output):\n\n", search_result)
