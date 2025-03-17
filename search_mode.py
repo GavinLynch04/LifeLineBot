@@ -3,6 +3,7 @@ import json
 import nltk
 import pdfplumber
 from sentence_transformers import SentenceTransformer
+from transformers import BartTokenizer, BartForConditionalGeneration, GenerationConfig
 import chromadb
 from config import SEARCH_METADATA_FILE, SEARCH_DB_PATH, SEARCH_COLLECTION_NAME
 
@@ -13,6 +14,22 @@ embedder = SentenceTransformer("all-MiniLM-L6-v2")
 # Load ChromaDB for storing and retrieving documents
 chroma_client = chromadb.PersistentClient(path=SEARCH_DB_PATH)
 collection = chroma_client.get_or_create_collection(name=SEARCH_COLLECTION_NAME)
+
+
+# Change this to the directory where the model and other needed files are stored
+model_name = f"sentence_compression_{os.name}"
+tokenizer = BartTokenizer.from_pretrained(model_name)
+model = BartForConditionalGeneration.from_pretrained(model_name)
+model.config.decoder_start_token_id = tokenizer.bos_token_id
+model.generation_config = GenerationConfig()
+
+
+def summarize_text_bart(input_text):
+    inputs = tokenizer(input_text, return_tensors="pt", padding=True, truncation=True, max_length=128)
+    outputs = model.generate(**inputs, max_length=50, num_beams=4, early_stopping=True,
+                             decoder_start_token_id=tokenizer.bos_token_id)
+    summary = tokenizer.decode(outputs[0], skip_special_tokens=True)
+    return summary
 
 
 def combine_short_sentences(sentences, target_length=15):
@@ -138,4 +155,9 @@ def ai_search(query):
     query_embedding = embedder.encode([query]).tolist()[0]
     results = collection.query(query_embeddings=[query_embedding], n_results=1)
 
-    return results['documents'][0][0] if results['documents'] and results['documents'][0] else None
+    top_result = results['documents'][0][0] if results['documents'] and results['documents'][0] else None
+
+    if top_result is None:
+        return "Please expand your search query to retrieve a better result"
+
+    return
