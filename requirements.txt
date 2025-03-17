@@ -1,0 +1,12 @@
+torch
+transformers
+pdfplumber
+chromadb
+sentence-transformers
+tensorflow
+nltk
+protobuf
+python-dotenv
+pandas
+datasets
+scikit-learn
