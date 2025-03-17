@@ -5,6 +5,8 @@ import pdfplumber
 from sentence_transformers import SentenceTransformer
 import chromadb
 from config import SEARCH_METADATA_FILE, SEARCH_DB_PATH, SEARCH_COLLECTION_NAME
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 nltk.download('punkt')
 
@@ -15,23 +17,76 @@ chroma_client = chromadb.PersistentClient(path=SEARCH_DB_PATH)
 collection = chroma_client.get_or_create_collection(name=SEARCH_COLLECTION_NAME)
 
 
-def split_into_chunks(text, max_tokens=750):
-    """Dynamically split text into chunks at sentence boundaries."""
-    sentences = nltk.sent_tokenize(text)
-    chunks, current_chunk = [], []
+def combine_short_sentences(sentences, target_length=15):
+    combined_sentences = []
+    current_combination = []
     current_length = 0
 
     for sentence in sentences:
-        sentence_length = len(sentence.split())  # Estimate tokens
-        if current_length + sentence_length > max_tokens:
-            chunks.append(" ".join(current_chunk))
-            current_chunk = []
-            current_length = 0
+        sentence_length = len(sentence.split())
 
-        current_chunk.append(sentence)
-        current_length += sentence_length
+        # If the sentence is short, try to combine it
+        if sentence_length < target_length:
+            if current_length + sentence_length <= target_length:
+                current_combination.append(sentence)
+                current_length += sentence_length
+            else:
+                # Add the combined short sentences to the final list
+                combined_sentences.append(" ".join(current_combination))
+                # Start a new combination with the current short sentence
+                current_combination = [sentence]
+                current_length = sentence_length
+        else:
+            # If the sentence is long enough, add it as is
+            if current_combination:
+                combined_sentences.append(" ".join(current_combination))
+                current_combination = []
+                current_length = 0
+            combined_sentences.append(sentence)
 
-    if current_chunk:
+    # Append any leftover short sentence combinations
+    if current_combination:
+        combined_sentences.append(" ".join(current_combination))
+
+    return combined_sentences
+
+
+def split_into_chunks(text, chunk_size=300, overlap_interval=5):
+    # Tokenize sentences
+    sentences = nltk.sent_tokenize(text)
+    chunks = []
+
+    # Step 2: Split any sentence longer than 40 words into chunks of 20 words
+    new_sentences = []
+    for sentence in sentences:
+        words = sentence.split()
+        if len(words) > 40:
+            # Split sentence into smaller chunks of 20 words
+            for i in range(0, len(words), 20):
+                new_sentences.append(" ".join(words[i:i + 20]))
+        else:
+            new_sentences.append(sentence)
+
+    new_sentences = combine_short_sentences(new_sentences, target_length=15)
+
+    # Now loop through the sentences and create chunks
+    sentences = new_sentences
+
+    # Loop over different starting points for overlap
+    for start_idx in range(0, len(sentences), overlap_interval):
+        current_chunk = []
+        current_length = 0
+        i = start_idx  # Restart at the current starting index
+
+        # Start combining sentences
+        while i < len(sentences) and current_length + len(sentences[i].split()) <= chunk_size:
+            current_chunk.append(sentences[i])
+            current_length += len(sentences[i].split())
+            i += 1
+
+        #print(f"New chunk length: {current_length} words (starting at sentence {start_idx})")
+
+        # Add the current chunk to the list of chunks
         chunks.append(" ".join(current_chunk))
 
     return chunks
@@ -81,7 +136,8 @@ def process_pdf(pdf_path, processed_pdfs):
         save_processed_pdfs(processed_pdfs)
 
 
-def ai_search(query, top_k=3):
+def ai_search(query):
     query_embedding = embedder.encode([query]).tolist()[0]
-    results = collection.query(query_embeddings=[query_embedding], n_results=top_k)
-    return results['documents'][0] if results['documents'] else []
+    results = collection.query(query_embeddings=[query_embedding], n_results=1)
+
+    return results['documents'][0][0] if results['documents'] and results['documents'][0] else None
