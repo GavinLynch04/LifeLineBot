@@ -8,7 +8,7 @@ Steps to install and set up the project.
 
 ```bash
 # Clone the repository
-git clone (https://github.com/GavinLynch04/LifeLineBot.git)
+git clone https://github.com/GavinLynch04/LifeLineBot.git
 
 # Navigate to the project directory
 cd LifeLineBot
