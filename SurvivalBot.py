@@ -32,8 +32,6 @@ os.environ["USE_TF"] = "0"
 device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
 torch_dtype = torch.float16
 
-print(f"Using device: {device}")
-
 model_name = "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B"
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 if tokenizer.pad_token is None:
@@ -75,8 +73,6 @@ def expand_query(user_query):
 
     inputs = tokenizer(prompt, return_tensors="pt", padding=True, truncation=True).to(device)
     inputs["input_ids"] = inputs["input_ids"].to(device)
-    print("Generating first output")
-    start = time.time()
     output_ids = model.generate(
         input_ids=inputs["input_ids"],
         max_length=200,
@@ -86,8 +82,6 @@ def expand_query(user_query):
         top_p=0.9,  # Less likely to generate long rambling responses
         do_sample=True,
     )
-    end = time.time()
-    print("Time taken to generate output:", end - start)
     return tokenizer.decode(output_ids[0], skip_special_tokens=True)
 
 
@@ -126,7 +120,7 @@ def generate_response(user_query):
     if gemini_response:
         return gemini_response
 
-    print("🔄 Falling back to local model...")
+    print("🔄 Falling back to local model... (this may take a while).")
 
     inputs = tokenizer(prompt, return_tensors="pt", padding=True, truncation=True).to(device)
     input_ids = inputs["input_ids"]
