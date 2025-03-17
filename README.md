@@ -19,12 +19,13 @@ pip install -r requirements.txt
 # Run the main program
 python SurivalBot.py
 
-(If this is the first run, the program will take a couple minutes to set up the database of PDFs)
+# (If this is the first run, the program will take a couple minutes to set up the database of PDFs)
+```
 
 # Chat Mode (default):
-Ask any question related to survivial or navigation. The model will default to Gemini API, and when internet access is not avaliable, will use a local hosted model (with a performance hit).
+Ask any question related to survival or navigation. The model will default to Gemini API, and when internet access is not available, will use a local hosted model (with a performance hit).
 
 # Search Mode:
 Start by typing "search", then hit enter. This will switch to search mode.
-Then ask any survial question, and the system will search the database for the most related information.
+Then ask any survival question, and the system will search the database for the most related information.
 From there, typing "summarize" will compress the output so it is easier to read and understand.
