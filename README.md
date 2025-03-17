@@ -16,6 +16,10 @@ cd LifeLineBot
 # Install dependencies
 pip install -r requirements.txt
 
+# Setup Gemini API key
+# Create .env file, insert free key from Google in the below format
+GOOGLE_API_KEY=KEY_HERE
+
 # Run the main program
 python SurivalBot.py
 
